@@ -95,6 +95,7 @@
     phase: 0,
     selected: "",
     pending: "",
+    pendingNum: 0,
     filter: "All items",
     loans: [
       {
@@ -112,6 +113,7 @@
     notice: "Sample shift · All records are fictional.",
   });
   let s = original();
+  let focusNext = "";
   const dueTimes = ["Fri 8 pm", "Sat 9 am", "Sat 10 am", "Sat noon"];
   const clockAt = () => [-1, -1, 1][s.phase];
   const overdue = (l) => !l.back && dueTimes.indexOf(l.due) < clockAt();
@@ -157,7 +159,7 @@
     esc(label) +
     "</strong><small>" +
     esc(sub) +
-    "</small></div><div>" +
+    "</small></div><div class=\"acts\">" +
     right +
     "</div></div>";
   const badge = (t, good = false) =>
@@ -248,11 +250,12 @@
   function followup() {
     const open = s.pending ? s.loans.filter((l) => l.req === s.pending && !l.back) : [];
     if (!open.length) return "";
+    open.sort((a, b) => (b.num === s.pendingNum) - (a.num === s.pendingNum));
     const r = getReq(s.pending);
     const pick = (label, key, list) =>
       "<label><span>" + label + '</span><select name="' + key + '" required><option value="">Select…</option>' + opts(list) + "</select></label>";
     return (
-      '<div class="record"><h3>' + esc(r.club) + " kit is not complete</h3><p>Still out: " +
+      '<div class="record"><h3 tabindex="-1" data-followup-title>' + (s.pendingNum ? "Update whereabouts" : esc(r.club) + " kit is not complete") + "</h3><p>Still out: " +
       open.map((l) => esc(l.asset + " · " + getAsset(l.asset).type)).join(", ") +
       ". Record who has it and when it is coming back, so the next shift can close it.</p>" +
       '<form data-whereabouts><div class="form"><label><span>Unit</span><select name="loan" required>' +
@@ -326,7 +329,7 @@
     const shown = s.loans
       .filter((l) => !s.onlyOpen || !l.back)
       .slice()
-      .reverse();
+      .sort((a, b) => overdue(b) - overdue(a) || b.num - a.num);
     if (!shown.length) html += "<p>No outstanding slips.</p>";
     for (const l of shown) {
       const a = getAsset(l.asset);
@@ -337,7 +340,13 @@
         l.back
           ? badge("Returned")
           : (overdue(l) ? '<span class="tag late">Overdue</span> ' : "") +
-              btn("Record return", "return", String(l.num)),
+              (!l.expect && s.loans.some((x) => x.req === l.req && x.back)
+                ? '<span class="tag late">Whereabouts not recorded</span> '
+                : "") +
+              (l.expect
+                ? '<button type="button" data-action="whereabouts" data-val="' + l.num + '" aria-label="Update whereabouts of ' + esc(l.asset) + '">Update whereabouts</button> '
+                : "") +
+              '<button type="button" data-action="return" data-val="' + l.num + '" aria-label="Record return of ' + esc(l.asset) + " (" + esc(a.type) + ')">Record return</button>',
       );
     }
     return followup() + html;
@@ -412,6 +421,11 @@
     q("[data-page]").innerHTML = screens[s.tab]();
     if (q("[data-filter]")) q("[data-filter]").value = s.filter;
     q("[data-status]").textContent = s.notice;
+    if (focusNext) {
+      const el = q(focusNext);
+      if (el) el.focus();
+      focusNext = "";
+    }
   }
   function commit(msg) {
     if (msg) s.notice = msg;
@@ -464,13 +478,24 @@
           s.tab = "Loan register";
           s.editing = false;
           s.onlyOpen = true;
+          s.pendingNum = 0;
+          focusNext = "[data-followup-title]";
           s.notice += " " + getReq(l.req).club + " still has equipment out: confirm who holds it.";
         } else if (s.pending === l.req) s.pending = "";
         break;
       }
       case "skip":
         s.pending = "";
+        s.pendingNum = 0;
         break;
+      case "whereabouts": {
+        const l = s.loans.find((l) => l.num === Number(v));
+        if (!l || l.back) return;
+        s.pending = l.req;
+        s.pendingNum = l.num;
+        focusNext = "[data-followup-title]";
+        break;
+      }
     }
     commit();
   });
@@ -504,6 +529,7 @@
         text: l.asset + " (" + getAsset(l.asset).type + ", slip L-" + l.num + ", " + getReq(l.req).club + ") is with " + holder + ", expected back " + expect + ". Originally collected by " + l.who + ", due " + l.due + ".",
       });
       s.pending = "";
+      s.pendingNum = 0;
       commit("Saved: " + l.asset + " is with " + holder + ", expected " + expect + ".");
       return;
     }
@@ -532,7 +558,13 @@
     const num = Math.max(...s.loans.map((l) => l.num)) + 1;
     s.loans.push({ num, req, asset, who, due, back: false });
     s.editing = false;
-    commit("Issued " + asset + " to " + who + " on slip L-" + num + ".");
+    const left = r.items.filter(
+      (t) => !s.loans.some((l) => l.req === req && getAsset(l.asset).type === t),
+    );
+    commit(
+      "Issued " + asset + " to " + who + " on slip L-" + num + ". " +
+        (left.length ? "Still to issue for " + req + ": " + left.join(", ") + "." : "Full approved kit issued for " + req + "."),
+    );
   });
   function restore(d) {
     if (
