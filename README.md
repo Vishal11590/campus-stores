@@ -22,31 +22,43 @@ Each browser stores its own sample shift locally when browser storage is availab
 
 Icon license notices are in [third-party/lucide-LICENSE.txt](third-party/lucide-LICENSE.txt).
 
-## My submission: partial returns, made visible
+## My submission: make a partial return impossible to lose
 
-**Where to look:** `app.js` (search for `followup`, `overdue`, `dueTimes`), one small rule in `styles.css` (`.late`). Nothing else changed.
+**Where to look:** `app.js` (search `followup`, `overdue`, `dueTimes`, `whereabouts`) and a few rules in `styles.css` (`.late`, `.acts`). `index.html` is unchanged.
+
+### The job, as I worked it
+Friday 3:45 pm: issue the Film Society kit (projector, speaker, adapter) to Kabir against RQ-214. 7:30 pm: take back the projector and speaker; Leela still has the adapter. Saturday 9:00 am: Leela arrives, and I have to close the right loan.
 
 ### One moment the product handles well
-At the Friday 3:45 pm pickup, the issue form only offers units that can actually leave: PR-06 (in repair) and anything already on loan are not selectable. The form also refuses a second projector against a request that approved one. Inventory status is derived from the loan register, so there is no separate flag to forget to update. I issued PR-04, SP-02 and AD-12 against RQ-214 without any risk of handing over a broken or double-booked unit.
+At pickup, the issue form only offers units that can actually leave the desk. PR-06 (in repair) and anything already on loan can't be selected, and a second projector against a request that approved one is refused. Availability is derived from the loan register, so there is no separate status to forget to update. When I issued PR-04, SP-02 and AD-12, the product guaranteed I could not hand out a broken or double-booked unit.
 
 ### One moment I would change
-At 7:30 pm Kabir returns the projector and speaker, and Leela still has the adapter. I clicked **Record return** twice and the product went quiet: the adapter's slip stayed open, but it still said *Kabir Sen, due Fri 8 pm*. The facts the morning shift needs (Leela has it, she is bringing it at 9 am) lived only in Kabir's free-text message and whatever I typed into the Desk book. The slips also showed only unit IDs (`L-404 · AD-12`), and AD-12 and AD-15 are identical adapters in the same bin, so on Saturday there was no quick way to match the object in Leela's hand to the right slip.
+At 7:30 pm I recorded the projector and speaker returns. The adapter's slip stayed open and still read *Kabir Sen, due Fri 8 pm*, but the real situation was that Leela had it and was bringing it at 9 am. That fact lived only in Kabir's free-text message and whatever I typed into the Desk book. On Saturday the register could not tell me who held the adapter, that it was already past its original due time, or which of two identical adapters (AD-12 and AD-15, same bin) to look for, because slips showed only unit IDs. The hand-off depended on a person remembering to write a note.
 
-### The change
-- **Prompt on partial return.** When a return leaves other units of the same request still out, the register opens with a "kit is not complete" panel asking *who has it now* and *expected back*. These are saved on the slip, and an entry is written to the Desk book automatically. "Not now" skips it.
-- **Kit status on the request.** Each approved item shows Not issued / On loan with X, expected Y / Returned.
-- **Readable slips.** Rows show item type and model next to the unit ID, plus the holder and expected time, and an **Overdue** tag when the original due time has passed.
+### The change: the kit is the unit of attention, the slip stays per-unit
+The register keeps one slip per physical unit, which is right. What was missing is a view that knows the unit belongs to a kit.
+- **Partial-return prompt.** When a return leaves other units of the same request out, the register opens a "kit is not complete" panel (focus moves to it) asking *who has it now* and *expected back*. It is saved on the slip, and a Desk book entry is written automatically. "Not now" is allowed.
+- **Safety net for "Not now".** A slip from a partly returned kit with no whereabouts shows a *Whereabouts not recorded* tag, so skipping the prompt can't silently recreate the old problem.
+- **Kit status on the request.** Each approved item shows Not issued / On loan with X, expected Y / Returned. At pickup, each issue confirmation also lists what is still to issue for that request.
+- **Readable, ordered slips.** Rows show type, model, collector, current holder and expected time. Overdue slips carry a tag and sort to the top. Action buttons carry the unit in their accessible name ("Record return of AD-12"), and rows stack on narrow screens.
+- **Fixable.** *Update whereabouts* lets the desk correct the holder or time later (for example, "Leela is running late").
 
-### Same job with the change
-Friday 3:45: issue the three units as before. 7:30: record the projector and speaker returns. The panel appears; I choose *Leela Das* and *Sat 9 am*. Saturday 9:00: the register shows `AD-12 · USB-C → HDMI adapter · Belkin AVC002 · Now with Leela Das, expected Sat 9 am · Overdue`. The Desk book and the request's kit status say the same thing. Leela hands over the adapter, I check the label reads AD-12, and I close that slip. The microphone slip (Debate Union, due Sat 10 am) is not touched.
+### The same job with the change
+Friday: issue three units; after the first, the confirmation says the speaker and adapter are still to issue. 7:30 pm: return projector and speaker; the panel appears; I pick *Leela Das*, *Sat 9 am*. The Desk book gets the entry without me typing. Saturday 9:00: the top row is `L-403 · AD-12 · USB-C → HDMI adapter · Belkin AVC002 · Now with Leela Das, expected Sat 9 am · Overdue`. I check the label on Leela's adapter reads AD-12 and close that slip. The Debate Union microphone slip (due Sat 10 am) is untouched.
 
-### What I would keep, and what I left out
-Keep: the approval and availability guards, one slip per physical unit, and the free-text Desk book for things the system can't model. I deliberately did not build multi-unit issue or a barcode scan; they would help Friday's pickup but I'd want counter evidence first. Times are a fixed ladder of the sample's four slots, not real timestamps, which a production version would need.
+### What I would keep
+The approval and availability guards, per-unit slips, derived inventory status, and the free-text Desk book for things the system can't model.
 
-### Observation at a real counter
-Count, over a week, how often the morning shift has to ask someone ("who has this?" / "which unit is this?") or read a paper note to close a partial loan. If the change works, that number should drop to near zero, and the time from a person arriving with an item to the slip being closed should fall.
+### What I chose not to build, and risks
+- No multi-unit "issue whole kit" button or barcode scan. They would speed up Friday's pickup, but I would want counter evidence first, and a scan step could slow a busy desk.
+- Times are the sample's four fixed slots, not real timestamps; a real version needs date-times and a real clock.
+- The prompt adds one step to a return. If desk staff find it annoying and always press "Not now", the *Whereabouts not recorded* tag is the signal to look at.
+- Tested end to end in headless Chromium (issue, partial return, skip, update, close, reload) and checked at phone width.
 
-*Built with AI assistance (Claude) and tested end to end in headless Chromium: issue, partial return, handover, close, reload.*
+### How I would know at a real counter
+Shadow the morning shift for a week before and a week after. Count (1) how often someone has to ask "who has this?" or read a paper note to close a partial loan, and (2) the time from a person arriving with an item to its slip being closed. Also count how often "Not now" is pressed. I would call it a success if the first number drops to near zero without the third climbing, and I would revert or simplify the prompt if staff skip it most of the time.
+
+*Built with AI assistance (Claude); I reviewed and tested the result.*
 
 ## Submit your work
 
