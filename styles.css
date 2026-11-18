@@ -251,6 +251,13 @@ body > main {
 #campus-stores label span {
   display: block;
 }
+#campus-stores .acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
 #campus-stores .tag {
   background: var(--desk);
   color: var(--quiet);
@@ -324,6 +331,12 @@ body > main {
   background: transparent;
 }
 @container (max-width:650px) {
+  #campus-stores .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #campus-stores .acts {
+    justify-content: flex-start;
+  }
   #campus-stores .shell {
     grid-template-columns: minmax(0, 1fr);
   }
