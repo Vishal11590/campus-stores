@@ -94,6 +94,7 @@
     tab: "Requests",
     phase: 0,
     selected: "",
+    pending: "",
     filter: "All items",
     loans: [
       {
@@ -111,6 +112,9 @@
     notice: "Sample shift · All records are fictional.",
   });
   let s = original();
+  const dueTimes = ["Fri 8 pm", "Sat 9 am", "Sat 10 am", "Sat noon"];
+  const clockAt = () => [-1, -1, 1][s.phase];
+  const overdue = (l) => !l.back && dueTimes.indexOf(l.due) < clockAt();
   const getAsset = (id) => assets.find((x) => x.id === id);
   const getReq = (id) => requests.find((x) => x.id === id);
   const out = (id) => s.loans.find((l) => l.asset === id && !l.back);
@@ -177,8 +181,29 @@
         r.owner +
         "</p><p><b>Return by</b> " +
         r.due +
-        "</p><p><b>Approved equipment</b></p><ul>" +
-        r.items.map((x) => "<li>" + x + "</li>").join("") +
+        "</p><p><b>Kit status</b></p><ul>" +
+        r.items
+          .map((t) => {
+            const ls = s.loans.filter(
+              (l) => l.req === r.id && getAsset(l.asset).type === t,
+            );
+            const st = ls.length
+              ? ls
+                  .map(
+                    (l) =>
+                      l.asset +
+                      " · " +
+                      (l.back
+                        ? "Returned"
+                        : "On loan with " +
+                          (l.holder || l.who) +
+                          (l.expect ? ", expected " + l.expect : ", due " + l.due)),
+                  )
+                  .join("; ")
+              : "Not issued yet";
+            return "<li>" + esc(t) + " — <b>" + esc(st) + "</b></li>";
+          })
+          .join("") +
         "</ul><p>" +
         r.note +
         "</p></div>";
@@ -219,6 +244,25 @@
       );
     }
     return html;
+  }
+  function followup() {
+    const open = s.pending ? s.loans.filter((l) => l.req === s.pending && !l.back) : [];
+    if (!open.length) return "";
+    const r = getReq(s.pending);
+    const pick = (label, key, list) =>
+      "<label><span>" + label + '</span><select name="' + key + '" required><option value="">Select…</option>' + opts(list) + "</select></label>";
+    return (
+      '<div class="record"><h3>' + esc(r.club) + " kit is not complete</h3><p>Still out: " +
+      open.map((l) => esc(l.asset + " · " + getAsset(l.asset).type)).join(", ") +
+      ". Record who has it and when it is coming back, so the next shift can close it.</p>" +
+      '<form data-whereabouts><div class="form"><label><span>Unit</span><select name="loan" required>' +
+      open.map((l) => '<option value="' + l.num + '">' + esc(l.asset + " · " + getAsset(l.asset).type) + "</option>").join("") +
+      "</select></label>" +
+      pick("Now with", "holder", people.map((p) => [p, p])) +
+      pick("Expected back", "expect", dueTimes.map((d) => [d, d])) +
+      '</div><div class="buttons"><button type="submit" class="primary">Save whereabouts</button>' +
+      btn("Not now", "skip") + "</div></form></div>"
+    );
   }
   function register() {
     let html = head(
@@ -284,15 +328,19 @@
       .slice()
       .reverse();
     if (!shown.length) html += "<p>No outstanding slips.</p>";
-    for (const l of shown)
+    for (const l of shown) {
+      const a = getAsset(l.asset);
       html += row(
-        "L-" + l.num + " · " + l.asset,
-        l.req + " · " + l.who + " · Due " + l.due,
+        "L-" + l.num + " · " + l.asset + " · " + a.type,
+        l.req + " · " + a.model + " · Collected by " + l.who + " · Due " + l.due +
+          (l.expect && !l.back ? " · Now with " + (l.holder || l.who) + ", expected " + l.expect : ""),
         l.back
           ? badge("Returned")
-          : btn("Record return", "return", String(l.num)),
+          : (overdue(l) ? '<span class="tag late">Overdue</span> ' : "") +
+              btn("Record return", "return", String(l.num)),
       );
-    return html;
+    }
+    return followup() + html;
   }
   function deskbook() {
     let html = head(
@@ -318,7 +366,7 @@
         "I brought the projector and speaker. Leela Das has our adapter. She’ll be at the counter at 9 am tomorrow.",
       ]);
     for (const n of s.notes)
-      entries.push([shifts[n.phase].time, "Counter handover", n.text]);
+      entries.push([shifts[n.phase].time, n.auto ? "Desk update (from loan slip)" : "Counter handover", n.text]);
     for (const [t, author, body] of entries.slice().reverse())
       html +=
         '<article class="record"><small>' +
@@ -411,8 +459,18 @@
         if (!l || l.back) return;
         l.back = true;
         s.notice = l.asset + " returned to stock. Slip L-" + l.num + " closed.";
+        if (s.loans.some((x) => x.req === l.req && !x.back)) {
+          s.pending = l.req;
+          s.tab = "Loan register";
+          s.editing = false;
+          s.onlyOpen = true;
+          s.notice += " " + getReq(l.req).club + " still has equipment out: confirm who holds it.";
+        } else if (s.pending === l.req) s.pending = "";
         break;
       }
+      case "skip":
+        s.pending = "";
+        break;
     }
     commit();
   });
@@ -431,6 +489,22 @@
       if (!text) return;
       s.notes.push({ phase: s.phase, text });
       commit("Handover note saved.");
+      return;
+    }
+    if (f.matches("[data-whereabouts]")) {
+      const l = s.loans.find((x) => x.num === Number(form.get("loan")));
+      const holder = String(form.get("holder"));
+      const expect = String(form.get("expect"));
+      if (!l || l.back || !people.includes(holder) || !dueTimes.includes(expect)) return;
+      l.holder = holder;
+      l.expect = expect;
+      s.notes.push({
+        phase: s.phase,
+        auto: true,
+        text: l.asset + " (" + getAsset(l.asset).type + ", slip L-" + l.num + ", " + getReq(l.req).club + ") is with " + holder + ", expected back " + expect + ". Originally collected by " + l.who + ", due " + l.due + ".",
+      });
+      s.pending = "";
+      commit("Saved: " + l.asset + " is with " + holder + ", expected " + expect + ".");
       return;
     }
     if (!f.matches("[data-issue]")) return;
